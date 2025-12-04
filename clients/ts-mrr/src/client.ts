@@ -2,7 +2,6 @@ import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 
 import idlJson from "../../../idl/mrr_solana.json";
-import { MRR_PROGRAM_ID } from "./constants";
 import { getMrrPda } from "./pdas";
 import type { InitializeMrrParams, MrrAccount, UpdateMrrParams } from "./types";
 
@@ -15,14 +14,9 @@ export class MrrClient {
   constructor(provider: anchor.Provider) {
     this.provider = provider as anchor.AnchorProvider;
 
-    // IMPORTANT: your Anchor version uses this signature:
-    // new Program(idl, provider, coder?, programId?)
-    this.program = new anchor.Program(
-      IDL,
-      this.provider,
-      undefined,
-      MRR_PROGRAM_ID,
-    );
+    // IMPORTANT: Program gets its programId from the IDL's `address` field.
+    // Signature: new Program(idl, provider, coder?, getCustomResolver?)
+    this.program = new anchor.Program(IDL, this.provider);
   }
 
   /**
@@ -49,11 +43,9 @@ export class MrrClient {
     const handle = params.handle ?? "";
     const capabilities = params.capabilities ?? 0;
 
-    // Debug: show what instructions the IDL actually has
     const methods = (this.program as any).methods;
     console.log("Available methods in IDL:", Object.keys(methods));
 
-    // Assumes Rust instruction is `pub fn init_mrr(...)` -> IDL name "init_mrr" -> TS method initMrr
     const sig = await methods
       .initMrr(encBytes, primaryRelayUri, backupRelayUri, handle, capabilities)
       .accounts({
