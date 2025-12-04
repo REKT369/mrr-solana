@@ -1,7 +1,7 @@
 # MRR: Message Routing Record (Solana)
 
-**Program:** `mrr_solana`  
-**Network:** Solana Devnet  
+**Program:** `mrr_solana`
+**Network:** Solana Devnet
 **Program ID:** `61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV`
 
 MRR (Message Routing Record) is a minimal on-chain primitive that lets any Solana wallet publish a **messaging routing profile**:
@@ -10,11 +10,12 @@ MRR (Message Routing Record) is a minimal on-chain primitive that lets any Solan
 
 MRR is intentionally tiny and non-opinionated:
 
-- One PDA per wallet  
-- Small fixed-size fields  
-- No messages or ciphertext stored on-chain  
-- No inbox  
-- No off-chain dependencies baked in  
+* One PDA per wallet
+* Small fixed-size fields
+* No messages stored on-chain
+* No inbox
+* No encryption rules
+* No off-chain dependencies
 
 It acts purely as a **directory entry** for wallets, relays, and apps.
 
@@ -22,35 +23,38 @@ It acts purely as a **directory entry** for wallets, relays, and apps.
 
 ## 1. Goals
 
-### **1. Minimal, universal primitive**
-MRR provides *just enough* on-chain state so senders know how to reach you off-chain.
+### 1. Minimal, universal primitive
 
-### **2. One record per wallet**
-Each wallet controls a single PDA, easy to fetch & verify.
+Only the routing metadata lives on-chain so senders know how to reach you.
 
-### **3. Key rotation support**
-Wallets can rotate encryption keys safely.
+### 2. One record per wallet
 
-### **4. Interop-friendly**
-Any messaging protocol can build on top:
+Each wallet controls a single deterministic PDA, easy to fetch and verify.
 
-- Wallet-to-wallet encrypted DM  
-- Email-like bridges  
-- App-level messaging  
-- QR “send me a message” codes  
+### 3. Key rotation
+
+Support for a current inbox key and a previous one, to make rotation smooth.
+
+### 4. Interop-friendly
+
+Any encrypted messaging protocol can build on top:
+
+* Wallet-to-wallet DM
+* Email-like bridges
+* App-level messaging
+* QR “send me a message” codes
 
 ---
 
 ## 2. Non-Goals
 
-MRR deliberately does **not**:
+MRR does **not**:
 
-- Store messages  
-- Store ciphertext  
-- Provide inbox UI  
-- Provide spam protection  
-- Define encryption schemes  
-- Define message formatting  
+* Store messages or ciphertext
+* Provide inbox UI
+* Solve spam or reputation
+* Define encryption schemes
+* Define message payload formats
 
 All of this is left to relays, wallets, and apps.
 
@@ -58,25 +62,22 @@ All of this is left to relays, wallets, and apps.
 
 ## 3. Account Model
 
-Each wallet may initialize **one** MRR account:
+Each wallet may initialize **one** MRR account.
 
-PDA seeds: ["mrr", owner_pubkey]
-Program: 61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV
+PDA:
 
-rust
-Copy code
+* Seeds: `["mrr", owner_pubkey]`
+* Program: `61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV`
 
-This gives a deterministic address for:
-
-- Fetching your routing record  
-- Verifying ownership  
-- Building any messaging layer on top  
+This provides a deterministic address for discovering routing information.
 
 ---
 
 ## 4. MRR Data Layout
 
-```rust
+The on-chain account is:
+
+```
 pub struct Mrr {
     pub owner: Pubkey,           // wallet controlling the PDA
     pub relay_url: String,       // off-chain relay endpoint
@@ -86,105 +87,118 @@ pub struct Mrr {
     pub flags: u8,               // capability flags
     pub bump: u8,                // PDA bump
 }
-Field notes
-Field	Description
-owner	Wallet authorized to update the MRR
-relay_url	Where encrypted messages should be delivered off-chain
-inbox_key	Public key for encrypting messages
-prev_inbox_key	Grace period for key rotation
-handle	Optional display handle (e.g. “rekt.sol")
-flags	Bitfield: future extensions
-bump	PDA bump
+```
 
-5. Instructions
-1. initialize_mrr
-Creates a PDA for the wallet if not already created.
+Field notes:
+
+* `owner` – wallet authorized to update the MRR
+* `relay_url` – off-chain relay endpoint where encrypted payloads should be sent
+* `inbox_key` – public key used to encrypt messages to this wallet
+* `prev_inbox_key` – previous inbox key, to support key rotation grace periods
+* `handle` – optional human-readable identifier (e.g. “rekt.sol”)
+* `flags` – capability bitfield for future extensions
+* `bump` – PDA bump used in address derivation
+
+---
+
+## 5. Instructions
+
+### 5.1. `initialize_mrr`
+
+Creates the PDA and sets initial values.
 
 Input:
 
-relay_url (string)
+* `relay_url` (string)
+* `inbox_key` (Pubkey)
+* `handle` (optional string)
+* `flags` (u8, optional; defaults to 0)
 
-inbox_key (Pubkey)
+Behavior:
 
-optional handle
+* Derives PDA from `["mrr", owner]`.
+* Initializes `Mrr` with provided values.
+* Sets `prev_inbox_key` to a default zero key.
 
-2. update_mrr
-Updates any part of the record:
+### 5.2. `update_mrr`
 
-rotate keys
+Owner can update:
 
-update relay
+* `relay_url`
+* `inbox_key` (and move current to `prev_inbox_key`)
+* `handle`
+* `flags`
 
-update handle
+Only the `owner` signer may call this. The PDA address does not change.
 
-update flags
+### 5.3. `close_mrr`
 
-Only the owner can call this.
+Closes the PDA and refunds rent to `owner`.
 
-3. close_mrr
-Closes the PDA and refunds rent.
+---
 
-6. Usage Flow
-Wallet Setup
-Wallet generates inbox keypair
+## 6. Usage Flow
 
-Wallet calls initialize_mrr with:
+### 6.1. Wallet Setup
 
-relay URL
+1. Wallet generates an inbox keypair off-chain.
+2. Wallet calls `initialize_mrr` with:
 
-inbox public key
+   * relay URL
+   * inbox public key
+   * optional handle
 
-handle
+### 6.2. Sender Workflow
 
-Sender Workflow
-Sender fetches PDA for target wallet
+1. Derive PDA for the target wallet using `["mrr", owner_pubkey]`.
+2. Fetch the `Mrr` account from Solana RPC.
+3. Read `relay_url` and `inbox_key`.
+4. Encrypt a message to `inbox_key`.
+5. Send ciphertext to `relay_url` using whatever off-chain protocol the relay supports.
 
-Reads:
+### 6.3. Receiver Workflow
 
-relay URL
+1. Relay delivers the encrypted payload off-chain (push, poll, webhook, etc.).
+2. Wallet decrypts using the private key corresponding to `inbox_key`.
+3. UI displays the message in whatever UX it wants.
 
-inbox key
+All message transport and storage is off-chain.
+MRR only provides the routing pointer.
 
-Encrypts message
+---
 
-Pushes ciphertext to that relay
+## 7. Security Model
 
-Receiver Workflow
-Off-chain relay pushes encrypted message
+MRR relies on:
 
-Wallet decrypts
+* Solana for identity and ownership of the PDA
+* Relays for private message transport
+* Wallets for decryption and UI
 
-UI displays message
+MRR intentionally publishes the **minimum viable routing info** and nothing else.
 
-Everything except the routing info happens off-chain.
+---
 
-7. Security Model
-MRR assumes:
+## 8. Extensibility
 
-The blockchain provides authenticity for the owner
+Future capabilities can be represented via `flags`, for example:
 
-Relays provide privacy + message delivery
+* Multiple relay support
+* Ephemeral key rotation policies
+* Multi-inbox mappings
+* Wallet-linked email or DM bridges
+* Supported protocol versions
 
-Wallet UI provides decryption
+Because the core layout is small and stable, higher-level systems can evolve on top without breaking existing records.
 
-MRR publishes the minimum surface area required to route encrypted data.
+---
 
-8. Extensibility
-Future capabilities via flags:
+## 9. Status
 
-supports ephemeral key rotation
+MRR v1 (Devnet) is live and deterministic under:
 
-supports multiple relays
+Program ID: `61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV`
 
-supports multi-inbox setups
+This document describes the v1 core behavior and layout.
 
-supports wallet-linked email
-
-supports interoperable DM providers
-
-MRR is intentionally “dumb.”
-Everything powerful sits on top.
-
-9. Status
-MRR v1 (Devnet) is live.
-Contracts: deterministic, stable, and minimal.
+---
