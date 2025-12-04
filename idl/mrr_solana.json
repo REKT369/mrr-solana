@@ -1,0 +1,26 @@
+{
+  "address": "61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV",
+  "metadata": {
+    "name": "mrr_solana",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [],
+      "args": []
+    }
+  ]
+}
