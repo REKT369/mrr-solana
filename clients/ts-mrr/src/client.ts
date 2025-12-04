@@ -1,5 +1,4 @@
-import { AnchorProvider, Idl, Program } from "@coral-xyz/anchor";
-import type { Provider } from "@coral-xyz/anchor";
+import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 
 import idlJson from "../../../idl/mrr_solana.json";
@@ -7,23 +6,27 @@ import { MRR_PROGRAM_ID } from "./constants";
 import { getMrrPda } from "./pdas";
 import type { InitializeMrrParams, MrrAccount, UpdateMrrParams } from "./types";
 
-const IDL = idlJson as unknown as Idl;
+const IDL = idlJson as anchor.Idl;
 
 export class MrrClient {
-  readonly provider: AnchorProvider;
-  readonly program: Program;
+  readonly provider: anchor.AnchorProvider;
+  readonly program: anchor.Program;
 
-  constructor(provider: Provider) {
-    this.provider = provider as AnchorProvider;
-    this.program = new Program(
+  constructor(provider: anchor.Provider) {
+    this.provider = provider as anchor.AnchorProvider;
+
+    // IMPORTANT: your Anchor version uses this signature:
+    // new Program(idl, provider, coder?, programId?)
+    this.program = new anchor.Program(
       IDL,
-      MRR_PROGRAM_ID,
       this.provider,
+      undefined,
+      MRR_PROGRAM_ID,
     );
   }
 
   /**
-   * Derive the PDA for an owner's MRR record.
+   * Derive PDA for an owner's MRR record.
    */
   getPda(owner: PublicKey): [PublicKey, number] {
     return getMrrPda(owner);
@@ -31,8 +34,6 @@ export class MrrClient {
 
   /**
    * Initialize a new Message Routing Record for the provider wallet.
-   *
-   * This will fail if an MRR already exists for the wallet.
    */
   async initialize(params: InitializeMrrParams): Promise<string> {
     const owner = this.provider.wallet.publicKey;
@@ -48,7 +49,12 @@ export class MrrClient {
     const handle = params.handle ?? "";
     const capabilities = params.capabilities ?? 0;
 
-    const sig = await this.program.methods
+    // Debug: show what instructions the IDL actually has
+    const methods = (this.program as any).methods;
+    console.log("Available methods in IDL:", Object.keys(methods));
+
+    // Assumes Rust instruction is `pub fn init_mrr(...)` -> IDL name "init_mrr" -> TS method initMrr
+    const sig = await methods
       .initMrr(encBytes, primaryRelayUri, backupRelayUri, handle, capabilities)
       .accounts({
         owner,
@@ -61,8 +67,7 @@ export class MrrClient {
   }
 
   /**
-   * Update fields on an existing MRR.
-   * Only provided params will be updated.
+   * Update an existing MRR.
    */
   async update(params: UpdateMrrParams): Promise<string> {
     const owner = this.provider.wallet.publicKey;
@@ -75,7 +80,9 @@ export class MrrClient {
         ? params.encPubkey.toBytes()
         : params.encPubkey;
 
-    const sig = await this.program.methods
+    const methods = (this.program as any).methods;
+
+    const sig = await methods
       .updateMrr(
         newEnc,
         params.primaryRelayUri ?? null,
@@ -99,7 +106,9 @@ export class MrrClient {
     const owner = ownerOverride ?? this.provider.wallet.publicKey;
     const [mrrPda] = this.getPda(owner);
 
-    const sig = await this.program.methods
+    const methods = (this.program as any).methods;
+
+    const sig = await methods
       .closeMrr()
       .accounts({
         owner,
