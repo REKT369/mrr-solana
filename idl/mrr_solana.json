@@ -1,26 +1,381 @@
 {
   "address": "61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV",
   "metadata": {
-    "name": "mrr_solana",
+    "name": "mrr_program",
     "version": "0.1.0",
     "spec": "0.1.0",
     "description": "Created with Anchor"
   },
   "instructions": [
     {
-      "name": "initialize",
-      "discriminator": [
-        175,
-        175,
-        109,
-        31,
-        13,
-        152,
-        155,
-        237
+      "name": "close_mrr",
+      "docs": [
+        "Close the MRR account and return rent to owner."
       ],
-      "accounts": [],
+      "discriminator": [
+        140,
+        199,
+        147,
+        82,
+        225,
+        169,
+        242,
+        110
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Owner receives the reclaimed rent."
+          ],
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "mrr"
+          ]
+        },
+        {
+          "name": "mrr",
+          "docs": [
+            "MRR PDA to be closed."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  114,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        }
+      ],
       "args": []
+    },
+    {
+      "name": "init_mrr",
+      "docs": [
+        "Initialize a new Message Routing Record (MRR) for the owner."
+      ],
+      "discriminator": [
+        221,
+        136,
+        205,
+        219,
+        175,
+        35,
+        15,
+        92
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Owner of the MRR and payer for the account creation."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mrr",
+          "docs": [
+            "PDA account: seeds = [\"mrr\", owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  114,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "enc_pubkey",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "primary_relay_uri",
+          "type": "string"
+        },
+        {
+          "name": "backup_relay_uri",
+          "type": "string"
+        },
+        {
+          "name": "handle",
+          "type": "string"
+        },
+        {
+          "name": "capabilities",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "update_mrr",
+      "docs": [
+        "Update an existing MRR. All fields are optional; only provided ones are changed."
+      ],
+      "discriminator": [
+        159,
+        46,
+        68,
+        70,
+        17,
+        222,
+        198,
+        180
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Owner must sign to update their MRR."
+          ],
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "mrr"
+          ]
+        },
+        {
+          "name": "mrr",
+          "docs": [
+            "Existing MRR PDA for the owner."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  114,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_enc_pubkey",
+          "type": {
+            "option": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        },
+        {
+          "name": "new_primary_relay_uri",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "new_backup_relay_uri",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "new_handle",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "new_capabilities",
+          "type": {
+            "option": "u32"
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Mrr",
+      "discriminator": [
+        51,
+        100,
+        24,
+        3,
+        59,
+        201,
+        254,
+        139
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "MrrUpdated",
+      "discriminator": [
+        237,
+        246,
+        249,
+        96,
+        4,
+        114,
+        126,
+        187
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "RelayUriTooLong",
+      "msg": "Relay URI is too long"
+    },
+    {
+      "code": 6001,
+      "name": "HandleTooLong",
+      "msg": "Handle is too long"
+    }
+  ],
+  "types": [
+    {
+      "name": "Mrr",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "enc_pubkey",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "prev_enc_pubkey",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "primary_relay_uri",
+            "type": "string"
+          },
+          {
+            "name": "backup_relay_uri",
+            "type": "string"
+          },
+          {
+            "name": "handle",
+            "type": "string"
+          },
+          {
+            "name": "capabilities",
+            "type": "u32"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MrrUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "enc_pubkey",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "prev_enc_pubkey",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "primary_relay_uri",
+            "type": "string"
+          },
+          {
+            "name": "backup_relay_uri",
+            "type": "string"
+          },
+          {
+            "name": "handle",
+            "type": "string"
+          },
+          {
+            "name": "capabilities",
+            "type": "u32"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          }
+        ]
+      }
     }
   ]
 }
