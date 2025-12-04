@@ -32,7 +32,7 @@ export interface InitializeMrrParams {
 
 /**
  * Parameters for updating an existing MRR.
- * All fields are optional; only provided values will be updated on-chain.
+ * Only provided fields will be updated.
  */
 export interface UpdateMrrParams {
   encPubkey?: Uint8Array | PublicKey;
