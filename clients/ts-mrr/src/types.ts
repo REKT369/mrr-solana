@@ -1,37 +1,43 @@
-import { PublicKey } from "@solana/web3.js";
+import type { PublicKey } from "@solana/web3.js";
 
-/**
- * TypeScript view of the MRR account, as returned
- * by Anchor's account fetch.
- */
 export interface MrrAccount {
   owner: PublicKey;
-  relayUrl: string;
-  inboxKey: PublicKey;
-  prevInboxKey: PublicKey;
+  encPubkey: Uint8Array;
+  primaryRelayUri: string;
+  backupRelayUri: string;
   handle: string;
-  flags: number;
+  capabilities: number;
   bump: number;
 }
 
 /**
- * Parameters for initializing an MRR.
+ * Parameters for initializing a new MRR.
  */
 export interface InitializeMrrParams {
-  relayUrl: string;
-  inboxKey: PublicKey;
+  /** Encryption / inbox public key (32 bytes). */
+  encPubkey: Uint8Array | PublicKey;
+
+  /** Primary relay URI (required). */
+  primaryRelayUri: string;
+
+  /** Optional backup relay URI (fallback). */
+  backupRelayUri?: string;
+
+  /** Optional human-readable handle / username. */
   handle?: string;
-  flags?: number;
+
+  /** Optional capability bitfield. */
+  capabilities?: number;
 }
 
 /**
- * Parameters for updating an MRR.
- * Only fields that are defined will be updated.
+ * Parameters for updating an existing MRR.
+ * All fields are optional; only provided values will be updated on-chain.
  */
 export interface UpdateMrrParams {
-  relayUrl?: string;
-  inboxKey?: PublicKey;
-  prevInboxKey?: PublicKey;
+  encPubkey?: Uint8Array | PublicKey;
+  primaryRelayUri?: string;
+  backupRelayUri?: string;
   handle?: string;
-  flags?: number;
+  capabilities?: number;
 }
