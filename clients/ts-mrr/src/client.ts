@@ -5,7 +5,7 @@ import { getMrrPda } from "./pdas";
 import { InitializeMrrParams, MrrAccount, UpdateMrrParams } from "./types";
 
 // Import the IDL from the root idl folder.
-import idl from "../../idl/mrr_solana.json";
+import idl from "../../../idl/mrr_solana.json";
 
 export const MRR_IDL = idl as anchor.Idl;
 
