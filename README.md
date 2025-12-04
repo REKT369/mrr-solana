@@ -173,4 +173,3 @@ Feel free to build on top.
 
 ---
 
-Just say the word.
