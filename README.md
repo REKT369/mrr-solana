@@ -173,3 +173,152 @@ Feel free to build on top.
 
 ---
 
+## How MRR Works
+
+MRR acts as a **public routing profile** that any wallet, relay, or messaging app can read from the Solana blockchain.
+It stores *only* the minimal metadata needed so encrypted messages can be delivered *off-chain*.
+
+### **High-Level Flow**
+
+```
++------------------------+          +---------------------+
+|        Sender          |          |      Receiver       |
+|  (wallet or app)       |          |     (wallet)        |
++-----------+------------+          +-----------+---------+
+            |                                   ^
+            |                                   |
+            | 1. Fetch receiver's MRR PDA       |
+            +-----------------------------------+
+            |                                   |
+            v                                   |
++------------------------+                      |
+|   Solana Blockchain    |                      |
+|  MRR PDA (per wallet)  |                      |
+|------------------------|                      |
+| owner pubkey           |                      |
+| encPubkey              | ---> for encryption  |
+| primaryRelayUri        | ---> where to send   |
+| backupRelayUri         |                      |
+| handle                 |                      |
+| capabilities           |                      |
++-----------+------------+                      |
+            |                                   |
+            | 2. Encrypt message using         |
+            |    `encPubkey`                   |
+            +--------------------+              |
+            |                    |              |
+            v                    |              |
++------------------------+       |              |
+|      Sender’s App      | 3. POST ciphertext   |
+|  (encrypts + packages) |--------------------->|
++------------------------+                      |
+                                               v
+                                  +---------------------------+
+                                  |        Relay Server       |
+                                  | (off-chain message router)|
+                                  +-------------+-------------+
+                                                |
+                                                | 4. Push ciphertext
+                                                v
+                                  +---------------------------+
+                                  |     Receiver’s Wallet     |
+                                  | (decrypt using privkey)   |
+                                  +---------------------------+
+                                                |
+                                                | 5. Display message
+                                                v
+                               +--------------------------------------+
+                               |     Inbox / Messaging Application    |
+                               +--------------------------------------+
+```
+
+---
+
+## What Actually Happens (Step-by-Step)
+
+### **1. Sender fetches the recipient’s MRR**
+
+The sender looks up the PDA:
+
+```
+PDA = findProgramAddress(["mrr", recipient_pubkey])
+```
+
+From this PDA, the sender learns:
+
+*  **encPubkey** → public key used to encrypt messages
+*  **primaryRelayUri** → where ciphertext should be delivered
+*  **handle** → optional display name
+*  **capabilities** → what features the wallet supports
+
+### **2. Sender encrypts the message**
+
+Using `encPubkey`, the sender encrypts the content **client-side**, off-chain.
+
+MRR never stores or touches ciphertext.
+
+### **3. Sender delivers ciphertext to the relay**
+
+The relay URL in the MRR determines where to send:
+
+```
+POST /deliver
+{
+  to: <recipient_wallet>,
+  ciphertext: <encrypted bytes>
+}
+```
+
+Relays can be:
+
+* centralized
+* decentralized
+* p2p mesh
+* inbox-as-a-service
+* your own hosted node
+
+MRR **doesn’t care** — it just points to the endpoint.
+
+### **4. Relay forwards encrypted message to the recipient**
+
+The relay pushes the ciphertext to the receiver’s device, inbox, app, or notification system.
+
+### **5. Receiver decrypts client-side**
+
+Using their private inbox keypair (not stored on-chain), the receiver decrypts the payload.
+
+---
+
+## Why This Architecture Works
+
+### ✔ Minimal on-chain footprint
+
+Only routing metadata lives on-chain — extremely cheap and future-proof.
+
+### ✔ Supports *any* messaging protocol
+
+E2EE? P2P? WebRTC? Matrix? XMTP-style inbox?
+All possible — nothing in MRR restricts you.
+
+### ✔ Zero custody, zero liability
+
+MRR does **not** handle:
+
+* keys
+* messages
+* storage
+* moderation
+
+You are only publishing a “where to reach me” record.
+
+### ✔ Pluggable relays
+
+Anyone can run a relay.
+Wallets can choose preferred relays.
+Apps can spin up optional relay networks.
+
+### ✔ Extremely easy to integrate
+
+One PDA lookup gives all the sender needs.
+
+---
