@@ -11,9 +11,6 @@ export const MRR_IDL = idl as anchor.Idl;
 
 /**
  * High-level client for the MRR program.
- *
- * This wraps an Anchor `Program` instance with helper methods
- * and typed parameters.
  */
 export class MrrClient {
   readonly provider: anchor.AnchorProvider;
@@ -21,11 +18,13 @@ export class MrrClient {
 
   constructor(provider: anchor.AnchorProvider) {
     this.provider = provider;
-    this.program = new anchor.Program(
+
+    // Cast to any to avoid TS signature mismatch across Anchor versions
+    this.program = new (anchor.Program as any)(
       MRR_IDL,
       MRR_PROGRAM_ID,
       provider
-    );
+    ) as any;
   }
 
   /**
@@ -39,9 +38,6 @@ export class MrrClient {
 
   /**
    * Initialize a new MRR for the provider wallet.
-   *
-   * Expects the underlying program method:
-   * initialize_mrr(ctx, relay_url: String, inbox_key: Pubkey, handle: String, flags: u8)
    */
   async initialize(params: InitializeMrrParams): Promise<string> {
     const owner = this.provider.wallet.publicKey;
@@ -57,7 +53,7 @@ export class MrrClient {
       .accounts({
         owner,
         mrr: pda,
-        systemProgram: SystemProgram.programId
+        systemProgram: SystemProgram.programId,
       })
       .rpc();
 
@@ -66,16 +62,6 @@ export class MrrClient {
 
   /**
    * Update an existing MRR for the provider wallet.
-   *
-   * Expects the underlying program method:
-   * update_mrr(
-   *   ctx,
-   *   relay_url: Option<String>,
-   *   inbox_key: Option<Pubkey>,
-   *   prev_inbox_key: Option<Pubkey>,
-   *   handle: Option<String>,
-   *   flags: Option<u8>,
-   * )
    */
   async update(params: UpdateMrrParams): Promise<string> {
     const owner = this.provider.wallet.publicKey;
@@ -100,7 +86,7 @@ export class MrrClient {
       )
       .accounts({
         owner,
-        mrr: pda
+        mrr: pda,
       })
       .rpc();
 
@@ -109,9 +95,6 @@ export class MrrClient {
 
   /**
    * Close the MRR PDA and reclaim rent, for the provider wallet.
-   *
-   * Expects underlying `close_mrr` instruction with accounts:
-   * { owner, mrr }
    */
   async close(): Promise<string> {
     const owner = this.provider.wallet.publicKey;
@@ -121,7 +104,7 @@ export class MrrClient {
       .closeMrr()
       .accounts({
         owner,
-        mrr: pda
+        mrr: pda,
       })
       .rpc();
 
@@ -135,7 +118,8 @@ export class MrrClient {
     const [pda] = this.getPda(owner);
 
     try {
-      const acc = (await this.program.account.mrr.fetch(pda)) as any;
+      // Cast account namespace to any to avoid TS complaining about field names
+      const acc = await (this.program.account as any).mrr.fetch(pda);
 
       const typed: MrrAccount = {
         owner: acc.owner as PublicKey,
@@ -144,7 +128,7 @@ export class MrrClient {
         prevInboxKey: acc.prevInboxKey as PublicKey,
         handle: acc.handle as string,
         flags: Number(acc.flags),
-        bump: Number(acc.bump)
+        bump: Number(acc.bump),
       };
 
       return typed;
