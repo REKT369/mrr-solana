@@ -1,4 +1,4 @@
-# mrr-salana
+# mrr-solana
 
 **MRR (Message Routing Record)** — a minimal, universal on-chain primitive for **wallet messaging profiles** on Solana.
 
