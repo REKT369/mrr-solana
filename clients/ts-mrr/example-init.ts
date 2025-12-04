@@ -1,5 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Keypair } from "@solana/web3.js";
+
 import { MrrClient } from "./dist";
 
 (async () => {
@@ -8,28 +9,22 @@ import { MrrClient } from "./dist";
 
   const client = new MrrClient(provider);
 
-  // Generate a fresh inbox keypair (public key stored in MRR, private key stays off-chain)
-  const inbox = Keypair.generate().publicKey;
+  const owner = provider.wallet.publicKey;
+  const inboxKey = Keypair.generate().publicKey;
 
-  console.log("Wallet owner:", provider.wallet.publicKey.toBase58());
-  console.log("Inbox key:", inbox.toBase58());
+  console.log("Wallet owner:", owner.toBase58());
+  console.log("Inbox key:", inboxKey.toBase58());
 
   const sig = await client.initialize({
-    relayUrl: "https://relay.example.com",
-    inboxKey: inbox,
+    encPubkey: inboxKey,
+    primaryRelayUri: "https://relay.example.com",
+    backupRelayUri: "",
     handle: "mrr-devnet-demo",
+    capabilities: 0,
   });
 
-  console.log("Initialize MRR tx:", sig);
+  console.log("Initialized MRR, tx:", sig);
 
-  const record = await client.fetch(provider.wallet.publicKey);
-  console.log("Fetched MRR record:", {
-    owner: record?.owner.toBase58(),
-    relayUrl: record?.relayUrl,
-    inboxKey: record?.inboxKey.toBase58(),
-    prevInboxKey: record?.prevInboxKey.toBase58(),
-    handle: record?.handle,
-    flags: record?.flags,
-    bump: record?.bump,
-  });
+  const record = await client.fetch(owner);
+  console.log("Fetched MRR account:", record);
 })();
