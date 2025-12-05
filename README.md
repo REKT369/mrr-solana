@@ -198,8 +198,3 @@ console.log(record);
 
 ---
 
-# 🔹 License
-
-MIT — open for experimentation, improvement, or integration into larger messaging stacks.
-
----
