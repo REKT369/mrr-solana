@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Keypair } from "@solana/web3.js";
-import { MrrClient } from "./dist";
+import { MrrClient } from "./src";
 
 (async () => {
   const provider = anchor.AnchorProvider.env();
