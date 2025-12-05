@@ -1,7 +1,16 @@
-.anchor
+# Rust / Anchor
+target/
+dist/
+**/*.log
 .DS_Store
-target
-**/*.rs.bk
-node_modules
-test-ledger
-.yarn
+.anchor/
+
+# Node / TS
+node_modules/
+clients/ts-mrr/node_modules/
+clients/ts-mrr/dist/
+
+# OS / editor noise
+.vscode/
+.idea/
+*.swp
