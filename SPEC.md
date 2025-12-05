@@ -1,21 +1,21 @@
 # MRR: Message Routing Record (Solana)
 
 **Program:** `mrr_solana`
+
 **Network:** Solana Devnet
+
 **Program ID:** `61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV`
 
 MRR (Message Routing Record) is a minimal on-chain primitive that lets any Solana wallet publish a **messaging routing profile**:
 
-> “If you want to send me encrypted messages, use this public key and this relay URL.”
+> “If you want to send me encrypted messages, use this public key and these relay URIs.”
 
-MRR is intentionally tiny and non-opinionated:
+MRR is intentionally small and non-opinionated:
 
 * One PDA per wallet
-* Small fixed-size fields
-* No messages stored on-chain
-* No inbox
-* No encryption rules
-* No off-chain dependencies
+* Fixed-size encryption key
+* A couple of relay URIs + optional handle
+* No messages or ciphertext stored on-chain
 
 It acts purely as a **directory entry** for wallets, relays, and apps.
 
@@ -23,38 +23,43 @@ It acts purely as a **directory entry** for wallets, relays, and apps.
 
 ## 1. Goals
 
-### 1. Minimal, universal primitive
+### Minimal, universal primitive
 
-Only the routing metadata lives on-chain so senders know how to reach you.
+MRR provides just enough on-chain state so senders know how to reach you off-chain:
 
-### 2. One record per wallet
+* Which public key to encrypt to
+* Which relay URI(s) to post ciphertext to
+* Optional human-readable handle
+* A bitfield for capabilities/feature flags
 
-Each wallet controls a single deterministic PDA, easy to fetch and verify.
+### One record per wallet
 
-### 3. Key rotation
+Each wallet controls a single PDA, easy to fetch and verify.
 
-Support for a current inbox key and a previous one, to make rotation smooth.
+### Key rotation support
 
-### 4. Interop-friendly
+Wallets can rotate their encryption key while keeping the same owner / PDA.
 
-Any encrypted messaging protocol can build on top:
+### Interop-friendly
 
-* Wallet-to-wallet DM
-* Email-like bridges
-* App-level messaging
-* QR “send me a message” codes
+Any messaging protocol can build on top:
+
+* Wallet-to-wallet encrypted DM
+* Email / DM bridges
+* App-level inboxes
+* “DM me” QR codes linked to your wallet
 
 ---
 
 ## 2. Non-Goals
 
-MRR does **not**:
+MRR deliberately does **not**:
 
 * Store messages or ciphertext
-* Provide inbox UI
-* Solve spam or reputation
+* Provide inbox or conversation UX
+* Provide spam protection or reputation
 * Define encryption schemes
-* Define message payload formats
+* Define message formats
 
 All of this is left to relays, wallets, and apps.
 
@@ -62,143 +67,186 @@ All of this is left to relays, wallets, and apps.
 
 ## 3. Account Model
 
-Each wallet may initialize **one** MRR account.
+Each wallet may initialize **one** MRR account:
 
-PDA:
+```text
+PDA seeds: ["mrr", owner_pubkey]
+Program:   61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV
+```
 
-* Seeds: `["mrr", owner_pubkey]`
-* Program: `61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV`
+This gives a deterministic address for:
 
-This provides a deterministic address for discovering routing information.
+* Fetching your routing record
+* Verifying ownership
+* Building any messaging layer on top
 
 ---
 
 ## 4. MRR Data Layout
 
-The on-chain account is:
+Rust struct (as implemented in `programs/mrr_program/src/lib.rs`):
 
-```
+```rust
 pub struct Mrr {
-    pub owner: Pubkey,           // wallet controlling the PDA
-    pub relay_url: String,       // off-chain relay endpoint
-    pub inbox_key: Pubkey,       // encryption/public inbox key
-    pub prev_inbox_key: Pubkey,  // optional old key for rotation
-    pub handle: String,          // optional username / identifier
-    pub flags: u8,               // capability flags
-    pub bump: u8,                // PDA bump
+    /// Wallet that owns and can update this record.
+    pub owner: Pubkey,
+
+    /// 32-byte encryption / inbox public key (x25519, ed25519, etc).
+    pub enc_pubkey: [u8; 32],
+
+    /// Primary relay URI where ciphertext should be delivered.
+    pub primary_relay_uri: String,
+
+    /// Optional backup relay URI (may be empty string).
+    pub backup_relay_uri: String,
+
+    /// Optional human-readable handle (e.g. "rekt.sol" or "rekt_mrr").
+    pub handle: String,
+
+    /// Bitfield for capabilities / feature flags.
+    pub capabilities: u32,
+
+    /// PDA bump seed.
+    pub bump: u8,
 }
 ```
 
-Field notes:
+### Field notes
 
-* `owner` – wallet authorized to update the MRR
-* `relay_url` – off-chain relay endpoint where encrypted payloads should be sent
-* `inbox_key` – public key used to encrypt messages to this wallet
-* `prev_inbox_key` – previous inbox key, to support key rotation grace periods
-* `handle` – optional human-readable identifier (e.g. “rekt.sol”)
-* `flags` – capability bitfield for future extensions
-* `bump` – PDA bump used in address derivation
+| Field               | Description                                           |
+| ------------------- | ----------------------------------------------------- |
+| `owner`             | Wallet authorized to create / update / close this MRR |
+| `enc_pubkey`        | 32-byte encryption / inbox key bytes                  |
+| `primary_relay_uri` | Main relay endpoint for ciphertext                    |
+| `backup_relay_uri`  | Optional secondary relay (empty string if unused)     |
+| `handle`            | Optional handle / username tied to this wallet        |
+| `capabilities`      | `u32` bitfield for future feature flags               |
+| `bump`              | PDA bump seed                                         |
+
+Validation (in the program):
+
+* `primary_relay_uri.len() <= MAX_URI_LEN`
+* `backup_relay_uri.len() <= MAX_URI_LEN`
+* `handle.len() <= MAX_HANDLE_LEN`
 
 ---
 
 ## 5. Instructions
 
-### 5.1. `initialize_mrr`
+The program exposes three instructions: `init_mrr`, `update_mrr`, and `close_mrr`.
 
-Creates the PDA and sets initial values.
+### 5.1 `init_mrr`
 
-Input:
+Initialize a new MRR for the calling wallet.
 
-* `relay_url` (string)
-* `inbox_key` (Pubkey)
-* `handle` (optional string)
-* `flags` (u8, optional; defaults to 0)
+**Accounts**
 
-Behavior:
+* `owner` – signer, writable (wallet that will own the MRR)
+* `mrr` – writable PDA, derived from `["mrr", owner]`
+* `system_program` – Solana System Program
 
-* Derives PDA from `["mrr", owner]`.
-* Initializes `Mrr` with provided values.
-* Sets `prev_inbox_key` to a default zero key.
+**Args**
 
-### 5.2. `update_mrr`
+1. `enc_pubkey: [u8; 32]`
+2. `primary_relay_uri: String`
+3. `backup_relay_uri: String`
+4. `handle: String`
+5. `capabilities: u32`
 
-Owner can update:
-
-* `relay_url`
-* `inbox_key` (and move current to `prev_inbox_key`)
-* `handle`
-* `flags`
-
-Only the `owner` signer may call this. The PDA address does not change.
-
-### 5.3. `close_mrr`
-
-Closes the PDA and refunds rent to `owner`.
+Fails if an MRR PDA already exists for this owner or if string length checks fail.
 
 ---
 
-## 6. Usage Flow
+### 5.2 `update_mrr`
 
-### 6.1. Wallet Setup
+Update an existing MRR record.
 
-1. Wallet generates an inbox keypair off-chain.
-2. Wallet calls `initialize_mrr` with:
+**Accounts**
 
-   * relay URL
-   * inbox public key
-   * optional handle
+* `owner` – signer, writable (must match `mrr.owner`)
+* `mrr` – writable PDA (existing MRR account)
 
-### 6.2. Sender Workflow
+**Args**
 
-1. Derive PDA for the target wallet using `["mrr", owner_pubkey]`.
-2. Fetch the `Mrr` account from Solana RPC.
-3. Read `relay_url` and `inbox_key`.
-4. Encrypt a message to `inbox_key`.
-5. Send ciphertext to `relay_url` using whatever off-chain protocol the relay supports.
+1. `enc_pubkey: [u8; 32]`
+2. `primary_relay_uri: String`
+3. `backup_relay_uri: String`
+4. `handle: String`
+5. `capabilities: u32`
 
-### 6.3. Receiver Workflow
+Used for:
 
-1. Relay delivers the encrypted payload off-chain (push, poll, webhook, etc.).
-2. Wallet decrypts using the private key corresponding to `inbox_key`.
-3. UI displays the message in whatever UX it wants.
-
-All message transport and storage is off-chain.
-MRR only provides the routing pointer.
+* Key rotation
+* Relay changes
+* Handle updates
+* Capability flag changes
 
 ---
 
-## 7. Security Model
+### 5.3 `close_mrr`
 
-MRR relies on:
+Close the MRR account and reclaim rent.
 
-* Solana for identity and ownership of the PDA
-* Relays for private message transport
-* Wallets for decryption and UI
+**Accounts**
 
-MRR intentionally publishes the **minimum viable routing info** and nothing else.
+* `owner` – signer, writable (receives reclaimed lamports)
+* `mrr` – writable PDA (MRR account to be closed)
 
----
-
-## 8. Extensibility
-
-Future capabilities can be represented via `flags`, for example:
-
-* Multiple relay support
-* Ephemeral key rotation policies
-* Multi-inbox mappings
-* Wallet-linked email or DM bridges
-* Supported protocol versions
-
-Because the core layout is small and stable, higher-level systems can evolve on top without breaking existing records.
+After closing, there is no active MRR for that wallet.
 
 ---
 
-## 9. Status
+## 6. Usage Flow (High Level)
 
-MRR v1 (Devnet) is live and deterministic under:
+### 6.1 Wallet setup
 
-Program ID: `61cVB9Sj5dWWGk5fUfPCCvwpRtpMds2QW4Q5G7UqaDYV`
+1. Wallet generates an encryption keypair (off-chain).
+2. Wallet calls `init_mrr` with:
 
-This document describes the v1 core behavior and layout.
+   * `enc_pubkey` bytes
+   * `primary_relay_uri` (+ optional backup)
+   * `handle` and `capabilities`
+
+Now anyone can derive the PDA and read how to reach this wallet.
 
 ---
+
+### 6.2 Sender workflow
+
+Given a wallet address:
+
+1. Derive the MRR PDA (`["mrr", owner]`).
+2. Fetch the account and read:
+
+   * `enc_pubkey`
+   * `primary_relay_uri` / `backup_relay_uri`
+3. Encrypt the message off-chain.
+4. POST ciphertext to the relay URI.
+
+---
+
+### 6.3 Receiver / relay workflow
+
+* The relay delivers ciphertext out-of-band (websocket, HTTP poll, etc.).
+* Receiver’s wallet / app:
+
+  * Fetches ciphertext from the relay.
+  * Decrypts locally using the private key corresponding to `enc_pubkey`.
+  * Renders the message in some UI.
+
+MRR itself does **not** care how the relay works or how the UI is built.
+
+---
+
+### 6.4 Rotation and opt-out
+
+* To rotate keys or change relays/handle, call `update_mrr`.
+* To opt-out entirely, call `close_mrr` to remove the record and reclaim rent.
+
+---
+
+## 7. Status
+
+* **Network:** Devnet
+* **Security:** Not audited – experimental / alpha.
+* **Intended users:** Wallet / relay / infra devs experimenting with wallet-linked messaging profiles, not end users directly.
